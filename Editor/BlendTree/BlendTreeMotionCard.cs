@@ -9,7 +9,7 @@ using System;
 namespace HonamiAnimationSystem.Editor.BlendTree
 {
     /// <summary>
-    /// Draggable node card for a single blend motion: exposes the clip, threshold, speed
+    /// Draggable node card for a single blend motion: exposes the clip, blend coordinates, speed
     /// and mirror fields, and visualizes its live blend weight as a radial arc.
     /// </summary>
     internal sealed class BlendTreeMotionCard : VisualElement
@@ -189,10 +189,34 @@ namespace HonamiAnimationSystem.Editor.BlendTree
             GuardInput(clipField);
             topRow.Add(clipField);
 
-            var thresholdField = new FloatField();
-            thresholdField.AddToClassList("honami-bt-node-field");
-            thresholdField.BindProperty(motionProp.FindPropertyRelative("threshold"));
-            GuardInput(thresholdField);
+            var valuesRow = new VisualElement
+            {
+                style = { flexDirection = FlexDirection.Row, alignItems = Align.FlexStart }
+            };
+
+            if (_state.IsDirectional2D)
+            {
+                SerializedProperty position = motionProp.FindPropertyRelative("position");
+                var positionXField = new FloatField();
+                positionXField.AddToClassList("honami-bt-node-field");
+                positionXField.BindProperty(position.FindPropertyRelative("x"));
+                GuardInput(positionXField);
+                valuesRow.Add(FieldColumn("X", positionXField, flexGrow: 1, minWidth: 42));
+
+                var positionYField = new FloatField();
+                positionYField.AddToClassList("honami-bt-node-field");
+                positionYField.BindProperty(position.FindPropertyRelative("y"));
+                GuardInput(positionYField);
+                valuesRow.Add(FieldColumn("Y", positionYField, flexGrow: 1, minWidth: 42));
+            }
+            else
+            {
+                var thresholdField = new FloatField();
+                thresholdField.AddToClassList("honami-bt-node-field");
+                thresholdField.BindProperty(motionProp.FindPropertyRelative("threshold"));
+                GuardInput(thresholdField);
+                valuesRow.Add(FieldColumn("Threshold", thresholdField, flexGrow: 1, minWidth: 48));
+            }
 
             var speedField = new FloatField();
             speedField.AddToClassList("honami-bt-node-field");
@@ -203,11 +227,6 @@ namespace HonamiAnimationSystem.Editor.BlendTree
             mirrorToggle.BindProperty(motionProp.FindPropertyRelative("mirror"));
             GuardInput(mirrorToggle);
 
-            var valuesRow = new VisualElement
-            {
-                style = { flexDirection = FlexDirection.Row, alignItems = Align.FlexStart }
-            };
-            valuesRow.Add(FieldColumn("Threshold", thresholdField, flexGrow: 1, minWidth: 48));
             valuesRow.Add(FieldColumn("Speed", speedField, flexGrow: 1, minWidth: 44));
             valuesRow.Add(FieldColumn("Mirror", mirrorToggle, flexGrow: 0, minWidth: 0, marginRight: 0));
             body.Add(valuesRow);

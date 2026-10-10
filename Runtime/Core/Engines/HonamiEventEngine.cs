@@ -48,6 +48,12 @@ namespace HonamiAnimationSystem.Runtime.Core
 
         private static void EvaluateEventsForState(HonamiAnimator anim, int layer, int portIdx, HonamiState state, int stateIdx, Playable playable)
         {
+            if (anim.TryGetDirectionalPort(layer, portIdx, stateIdx, out HonamiBlend2DPortRuntime directionalPort))
+            {
+                EvaluateDirectionalStateEvents(anim, layer, portIdx, state, directionalPort);
+                return;
+            }
+
             float unscaledDuration = HonamiStateEvaluator.GetUnscaledStateDuration(anim.controller, state, stateIdx, anim.GetNodeRuntime(stateIdx), GetStateBlendParam(anim, stateIdx));
             if (unscaledDuration <= 0f) return;
 
@@ -65,6 +71,27 @@ namespace HonamiAnimationSystem.Runtime.Core
             {
                 EvaluateSingleRunStateEvents(anim, layer, portIdx, state, stateIdx, unscaledDuration, rawTime);
             }
+        }
+
+        /// <summary>
+        /// Directional trees are loop-only and advance a canonical phase whose period follows the
+        /// blended input. Loop crossings come from the port's unwrapped cycle position (stored in
+        /// LastFrameRawTime in normalized units for these ports); event times are compared in
+        /// seconds of the current period, matching the clip times the port applies.
+        /// </summary>
+        private static void EvaluateDirectionalStateEvents(HonamiAnimator anim, int layer, int portIdx, HonamiState state,
+            HonamiBlend2DPortRuntime directionalPort)
+        {
+            if (!HonamiBlendTreeEvaluator.TryGetDirectionalPeriod(directionalPort, out float period)) return;
+
+            double cyclePosition = directionalPort.CyclePosition;
+            double lastCyclePosition = anim._portStates[layer][portIdx].LastFrameRawTime;
+            anim._portStates[layer][portIdx].LastFrameRawTime = cyclePosition;
+
+            if (lastCyclePosition < 0) lastCyclePosition = cyclePosition;
+
+            EvaluateLoopingStateEvents(anim, layer, portIdx, state, period,
+                cyclePosition * period, lastCyclePosition * period);
         }
 
         private static void EvaluateLoopingStateEvents(HonamiAnimator anim, int layer, int portIdx, HonamiState state, float unscaledDuration, double rawTime, double lastRawTime)
