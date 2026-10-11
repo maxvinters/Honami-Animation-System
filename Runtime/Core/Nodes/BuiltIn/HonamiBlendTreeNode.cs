@@ -93,7 +93,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                 positions[i] = motion.position;
                 lengths[i] = motion.clip.length;
                 speeds[i] = motion.speed;
-                cycleOffsets[i] = motion.cycleOffset;
+                cycleOffsets[i] = WrapCycleOffset(motion.cycleOffset);
             }
 
             try
@@ -148,7 +148,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                     hash = hash * 31 + motion.speed.GetHashCode();
                     hash = hash * 31 + (motion.clip != null ? motion.clip.length.GetHashCode() : 0);
                     hash = hash * 31 + (motion.mirror ? 1 : 0);
-                    hash = hash * 31 + motion.cycleOffset.GetHashCode();
+                    hash = hash * 31 + WrapCycleOffset(motion.cycleOffset).GetHashCode();
                 }
                 return hash;
             }
@@ -169,11 +169,22 @@ namespace HonamiAnimationSystem.Runtime.Core
                     motion.position.x != directionalPositionSnapshot[i].x ||
                     motion.position.y != directionalPositionSnapshot[i].y ||
                     motion.speed != directionalSpeedSnapshot[i] ||
-                    motion.cycleOffset != directionalCycleOffsetSnapshot[i] ||
+                    WrapCycleOffset(motion.cycleOffset) != directionalCycleOffsetSnapshot[i] ||
                     motion.clip == null || motion.clip.length != directionalLengthSnapshot[i])
                     return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// Maps an authored cycle offset onto the cycle like Unity's ChildMotion.cycleOffset:
+        /// frac(value) in [0, 1), with non-finite values treated as 0.
+        /// </summary>
+        public static float WrapCycleOffset(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value)) return 0f;
+            float wrapped = value - Mathf.Floor(value);
+            return wrapped >= 1f || wrapped < 0f ? 0f : wrapped;
         }
 
         private void OnValidate()

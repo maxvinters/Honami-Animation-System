@@ -188,6 +188,9 @@ namespace HonamiAnimationSystem.Editor.Preview
             SampleWeightedMotions(motions, weights, normalizedPhase, 0f, reversed, true);
         }
 
+        private static float DirectionalSamplePhase(float phase, float cycleOffset)
+            => cycleOffset == 0f ? phase : Mathf.Repeat(phase + cycleOffset, 1f);
+
         private void SampleWeightedMotions(IReadOnlyList<HonamiBlendTreeMotion> motions,
             ReadOnlySpan<float> weights, float normalizedTime, float avgDur, bool reversed,
             bool useCanonicalChildPhase)
@@ -212,7 +215,7 @@ namespace HonamiAnimationSystem.Editor.Preview
                     : (motion.speed != 0f ? Mathf.Abs(motion.speed) : 1f);
 
                 float sampleTime = useCanonicalChildPhase
-                    ? (motion.cycleOffset == 0f ? normalizedTime : Mathf.Repeat(normalizedTime + motion.cycleOffset, 1f)) * clipLength
+                    ? DirectionalSamplePhase(normalizedTime, HonamiBlendTreeNode.WrapCycleOffset(motion.cycleOffset)) * clipLength
                     : normalizedTime * avgDur * speed;
                 if (reversed) sampleTime = clipLength - sampleTime;
                 sampleTime = clipLength > 0f

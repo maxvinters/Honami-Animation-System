@@ -242,12 +242,22 @@ namespace HonamiAnimationSystem.Editor.BlendTree
                     tooltip = "Normalized cycle offset in [0, 1) added to this motion's sample phase, like Unity's Cycle Offset. Weights, period and the shared phase are unchanged."
                 };
                 cycleOffsetField.AddToClassList("honami-bt-node-field");
-                cycleOffsetField.BindProperty(motionProp.FindPropertyRelative("cycleOffset"));
+                // Not bound directly: the value is clamped before it is written, so an out-of-range
+                // entry never reaches the asset and each edit is a single undo step.
+                SerializedProperty cycleOffsetProp = motionProp.FindPropertyRelative("cycleOffset");
+                cycleOffsetField.SetValueWithoutNotify(ClampCycleOffset(cycleOffsetProp.floatValue));
                 cycleOffsetField.RegisterValueChangedCallback(evt =>
                 {
                     float clamped = ClampCycleOffset(evt.newValue);
-                    if (clamped != evt.newValue) cycleOffsetField.value = clamped;
+                    if (clamped != evt.newValue) cycleOffsetField.SetValueWithoutNotify(clamped);
+                    SerializedObject owner = cycleOffsetProp.serializedObject;
+                    owner.Update();
+                    if (cycleOffsetProp.floatValue == clamped) return;
+                    cycleOffsetProp.floatValue = clamped;
+                    owner.ApplyModifiedProperties();
                 });
+                cycleOffsetField.TrackPropertyValue(cycleOffsetProp,
+                    property => cycleOffsetField.SetValueWithoutNotify(ClampCycleOffset(property.floatValue)));
                 GuardInput(cycleOffsetField);
                 cycleOffsetRow.Add(FieldColumn("Cycle Offset", cycleOffsetField, flexGrow: 1, minWidth: 44, marginRight: 0));
                 body.Add(cycleOffsetRow);

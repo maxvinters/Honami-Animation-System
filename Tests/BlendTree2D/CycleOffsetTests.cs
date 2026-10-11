@@ -74,13 +74,24 @@ namespace HonamiAnimationSystem.Tests.BlendTree2D
                 () => new HonamiDirectionalBlendSolver(Dir.Pos, Lengths(), Speeds(), new[] { 0f, 0f }));
         }
 
-        [Test]
-        public void Node_InvalidOffset_ReportsSolverError()
+        [TestCase(1.25f, 0.25f)]
+        [TestCase(-0.25f, 0.75f)]
+        [TestCase(1f, 0f)]
+        [TestCase(3f, 0f)]
+        [TestCase(float.NaN, 0f)]
+        [TestCase(float.PositiveInfinity, 0f)]
+        [TestCase(float.NegativeInfinity, 0f)]
+        public void Node_OutOfRangeOffset_WrapsCyclically(float authored, float expected)
         {
+            // The solver API stays strict; the node maps authored values onto the cycle like Unity.
+            Assert.AreEqual(expected, HonamiBlendTreeNode.WrapCycleOffset(authored), 0f);
+
             var node = Tree2D("X", "Y", 0f, 0f);
-            node.blendMotions[Dir.East].cycleOffset = 1f;
-            Assert.IsFalse(node.TryGetDirectionalSolver(out _, out string error));
-            StringAssert.Contains(RangeMessage, error);
+            node.blendMotions[Dir.East].cycleOffset = authored;
+            Assert.IsTrue(node.TryGetDirectionalSolver(out var solver, out string error), error);
+            Assert.AreEqual(expected, solver.GetCycleOffset(Dir.East), 0f);
+            Assert.IsTrue(node.TryGetDirectionalSolver(out var cached, out error), error);
+            Assert.AreSame(solver, cached, "a wrapped offset must not defeat the solver cache");
         }
 
         [Test]
@@ -148,17 +159,16 @@ namespace HonamiAnimationSystem.Tests.BlendTree2D
         }
 
         // ---------------------------------------------------------------- Playables evaluation
-        private HonamiBlendTreeNode Tree2DWithOffsets(float[] offsets)
-        {
-            var node = Tree2D("X", "Y", 0f, 0f);
-            if (offsets != null)
-                for (int i = 0; i < offsets.Length; i++) node.blendMotions[i].cycleOffset = offsets[i];
-            return node;
-        }
-
-        private Rig StartRig(HonamiBlendTreeNode tree)
+        /// <summary>
+        /// Creates the rig before its clips, node and controller so TearDown destroys the animator
+        /// (and lets it reset its states) before the assets it references.
+        /// </summary>
+        private Rig StartRig(float[] offsets)
         {
             var rig = NewRig();
+            var tree = Tree2D("X", "Y", 0f, 0f);
+            if (offsets != null)
+                for (int i = 0; i < offsets.Length; i++) tree.blendMotions[i].cycleOffset = offsets[i];
             var c = NewController(("X", 0f), ("Y", 0f));
             AddState(c, "Move", tree, 0, true);
             rig.Begin(c);
@@ -169,8 +179,8 @@ namespace HonamiAnimationSystem.Tests.BlendTree2D
         public IEnumerator Playables_ZeroOffsets_MatchDefaultPose()
         {
             // Hip.z is a 0..1 sawtooth over each clip, so it reads back the sampled child phase.
-            var baseline = StartRig(Tree2DWithOffsets(null));
-            var zeros = StartRig(Tree2DWithOffsets(new float[5]));
+            var baseline = StartRig(null);
+            var zeros = StartRig(new float[5]);
             yield return Sim(0.35f);
 
             for (int d = 0; d < 5; d++)
@@ -191,8 +201,8 @@ namespace HonamiAnimationSystem.Tests.BlendTree2D
         public IEnumerator Playables_Offset_ShiftsSampledChildPhase()
         {
             var offsets = new[] { 0.25f, 0.6f, 0f, 0.9f, 0.5f };
-            var baseline = StartRig(Tree2DWithOffsets(null));
-            var shifted = StartRig(Tree2DWithOffsets(offsets));
+            var baseline = StartRig(null);
+            var shifted = StartRig(offsets);
             yield return Sim(0.2f);
 
             var basePort = Internals.Port(baseline.Anim, "Move");
