@@ -14,6 +14,9 @@ namespace HonamiAnimationSystem.Runtime.Core
         public Vector2 position;
         public float speed = 1f;
         public bool mirror = false;
+        [Tooltip("FreeformDirectional2D only: normalized cycle offset in [0, 1) added to this child's sample phase, like Unity's ChildMotion.cycleOffset. Weights, period, and the shared phase are unchanged.")]
+        [Range(0f, 0.9999f)]
+        public float cycleOffset = 0f;
     }
 
     /// <summary>

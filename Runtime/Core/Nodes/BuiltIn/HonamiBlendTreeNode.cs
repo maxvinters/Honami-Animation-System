@@ -35,6 +35,7 @@ namespace HonamiAnimationSystem.Runtime.Core
         [NonSerialized] private Vector2[] directionalPositionSnapshot;
         [NonSerialized] private float[] directionalLengthSnapshot;
         [NonSerialized] private float[] directionalSpeedSnapshot;
+        [NonSerialized] private float[] directionalCycleOffsetSnapshot;
 
         public override string GetBlendParameterName() => blendParameter;
 
@@ -73,6 +74,7 @@ namespace HonamiAnimationSystem.Runtime.Core
             var positions = new Vector2[count];
             var lengths = new float[count];
             var speeds = new float[count];
+            var cycleOffsets = new float[count];
             for (int i = 0; i < count; i++)
             {
                 HonamiBlendTreeMotion motion = blendMotions[i];
@@ -91,17 +93,19 @@ namespace HonamiAnimationSystem.Runtime.Core
                 positions[i] = motion.position;
                 lengths[i] = motion.clip.length;
                 speeds[i] = motion.speed;
+                cycleOffsets[i] = motion.cycleOffset;
             }
 
             try
             {
-                var prepared = new HonamiDirectionalBlendSolver(positions, lengths, speeds);
+                var prepared = new HonamiDirectionalBlendSolver(positions, lengths, speeds, cycleOffsets);
                 directionalSolver = prepared;
                 directionalTopologySignature = signature;
                 directionalClipSnapshot = clips;
                 directionalPositionSnapshot = positions;
                 directionalLengthSnapshot = lengths;
                 directionalSpeedSnapshot = speeds;
+                directionalCycleOffsetSnapshot = cycleOffsets;
                 solver = prepared;
                 return true;
             }
@@ -144,6 +148,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                     hash = hash * 31 + motion.speed.GetHashCode();
                     hash = hash * 31 + (motion.clip != null ? motion.clip.length.GetHashCode() : 0);
                     hash = hash * 31 + (motion.mirror ? 1 : 0);
+                    hash = hash * 31 + motion.cycleOffset.GetHashCode();
                 }
                 return hash;
             }
@@ -153,7 +158,8 @@ namespace HonamiAnimationSystem.Runtime.Core
         {
             if (blendMotions == null || directionalClipSnapshot == null ||
                 directionalPositionSnapshot == null || directionalLengthSnapshot == null ||
-                directionalSpeedSnapshot == null || blendMotions.Count != directionalClipSnapshot.Length)
+                directionalSpeedSnapshot == null || directionalCycleOffsetSnapshot == null ||
+                blendMotions.Count != directionalClipSnapshot.Length)
                 return false;
 
             for (int i = 0; i < blendMotions.Count; i++)
@@ -163,6 +169,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                     motion.position.x != directionalPositionSnapshot[i].x ||
                     motion.position.y != directionalPositionSnapshot[i].y ||
                     motion.speed != directionalSpeedSnapshot[i] ||
+                    motion.cycleOffset != directionalCycleOffsetSnapshot[i] ||
                     motion.clip == null || motion.clip.length != directionalLengthSnapshot[i])
                     return false;
             }
@@ -177,6 +184,7 @@ namespace HonamiAnimationSystem.Runtime.Core
             directionalPositionSnapshot = null;
             directionalLengthSnapshot = null;
             directionalSpeedSnapshot = null;
+            directionalCycleOffsetSnapshot = null;
         }
 
         public override Playable CreatePlayable(PlayableGraph graph, HonamiState state)

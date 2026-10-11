@@ -25,6 +25,7 @@ namespace HonamiAnimationSystem.Runtime.Core
         private readonly double[] angles;
         private readonly float[] clipLengths;
         private readonly float[] childSpeeds;
+        private readonly float[] cycleOffsets;
         private readonly PairCoefficients[] pairs;
         private readonly Vector2[] hull;
         private readonly int originIndex;
@@ -50,15 +51,28 @@ namespace HonamiAnimationSystem.Runtime.Core
 
         public int MotionCount => positions.Length;
 
-        /// <summary>Prepares one immutable authored topology. Input arrays are copied.</summary>
+        /// <summary>Prepares one immutable authored topology with all cycle offsets at zero. Input arrays are copied.</summary>
         public HonamiDirectionalBlendSolver(Vector2[] authoredPositions, float[] authoredClipLengths,
-            float[] authoredChildSpeeds)
+            float[] authoredChildSpeeds) : this(authoredPositions, authoredClipLengths, authoredChildSpeeds, null)
+        {
+        }
+
+        /// <summary>Prepares one immutable authored topology. Input arrays are copied.</summary>
+        /// <param name="authoredCycleOffsets">Optional per-motion normalized cycle offsets in [0, 1),
+        /// like Unity's ChildMotion.cycleOffset: a child samples its clip at frac(phase + offset).
+        /// They change only sampled child time, never weights, period, or phase. Null means all zero.</param>
+        public HonamiDirectionalBlendSolver(Vector2[] authoredPositions, float[] authoredClipLengths,
+            float[] authoredChildSpeeds, float[] authoredCycleOffsets)
         {
             ValidateInputs(authoredPositions, authoredClipLengths, authoredChildSpeeds, out int foundOrigin);
+            ValidateCycleOffsets(authoredCycleOffsets, authoredPositions.Length);
 
             positions = (Vector2[])authoredPositions.Clone();
             clipLengths = (float[])authoredClipLengths.Clone();
             childSpeeds = (float[])authoredChildSpeeds.Clone();
+            cycleOffsets = authoredCycleOffsets != null
+                ? (float[])authoredCycleOffsets.Clone()
+                : new float[authoredPositions.Length];
             originIndex = foundOrigin;
             radii = new double[positions.Length];
             angles = new double[positions.Length];
@@ -86,6 +100,35 @@ namespace HonamiAnimationSystem.Runtime.Core
         {
             ValidateIndex(motionIndex);
             return clipLengths[motionIndex];
+        }
+
+        /// <summary>Returns the motion's normalized cycle offset in [0, 1).</summary>
+        public float GetCycleOffset(int motionIndex)
+        {
+            ValidateIndex(motionIndex);
+            return cycleOffsets[motionIndex];
+        }
+
+        /// <summary>Read-only view of all per-motion cycle offsets (all zero when none were authored).</summary>
+        public ReadOnlySpan<float> CycleOffsets => cycleOffsets;
+
+        /// <summary>True when the value is a valid normalized cycle offset: finite and within [0, 1).</summary>
+        public static bool IsValidCycleOffset(float offset)
+        {
+            return !float.IsNaN(offset) && !float.IsInfinity(offset) && offset >= 0f && offset < 1f;
+        }
+
+        private static void ValidateCycleOffsets(float[] offsets, int motionCount)
+        {
+            if (offsets == null)
+                return;
+            if (offsets.Length != motionCount)
+                throw new ArgumentException("Directional cycle offsets must have one entry per motion.", nameof(offsets));
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                if (!IsValidCycleOffset(offsets[i]))
+                    throw new ArgumentException($"Directional motion {i} cycle offset must be finite and within [0, 1).", nameof(offsets));
+            }
         }
 
         public float GetChildSpeed(int motionIndex)

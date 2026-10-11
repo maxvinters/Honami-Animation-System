@@ -187,11 +187,16 @@ namespace HonamiAnimationSystem.Runtime.Core
             return true;
         }
 
-        /// <summary>Returns the child clip time implied by the shared canonical phase.</summary>
+        /// <summary>
+        /// Returns the child clip time implied by the shared canonical phase and the motion's authored
+        /// cycle offset: frac(phase + offset) * clipLength. Offset 0 returns exactly phase * clipLength.
+        /// </summary>
         public double GetChildTime(int motionIndex)
         {
             if (!initialized) throw new InvalidOperationException("Initialize the directional port before reading child time.");
-            return phase * solver.GetClipLength(motionIndex);
+            float cycleOffset = solver.GetCycleOffset(motionIndex);
+            double samplePhase = cycleOffset == 0f ? phase : Wrap01(phase + cycleOffset);
+            return samplePhase * solver.GetClipLength(motionIndex);
         }
 
         public float GetWeight(int motionIndex)

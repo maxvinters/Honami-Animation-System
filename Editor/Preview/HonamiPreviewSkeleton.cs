@@ -177,7 +177,8 @@ namespace HonamiAnimationSystem.Editor.Preview
 
         /// <summary>
         /// Samples a directional tree from the caller's weights and canonical normalized phase.
-        /// The caller supplies weights from the shared runtime solver; each child uses phase * clip length.
+        /// The caller supplies weights from the shared runtime solver; each child uses
+        /// frac(phase + cycleOffset) * clip length, matching the runtime port.
         /// </summary>
         public void SampleDirectionalBlend(IReadOnlyList<HonamiBlendTreeMotion> motions,
             ReadOnlySpan<float> weights, float normalizedPhase, bool reversed)
@@ -211,7 +212,7 @@ namespace HonamiAnimationSystem.Editor.Preview
                     : (motion.speed != 0f ? Mathf.Abs(motion.speed) : 1f);
 
                 float sampleTime = useCanonicalChildPhase
-                    ? normalizedTime * clipLength
+                    ? (motion.cycleOffset == 0f ? normalizedTime : Mathf.Repeat(normalizedTime + motion.cycleOffset, 1f)) * clipLength
                     : normalizedTime * avgDur * speed;
                 if (reversed) sampleTime = clipLength - sampleTime;
                 sampleTime = clipLength > 0f

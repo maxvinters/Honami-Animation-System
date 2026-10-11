@@ -9,8 +9,8 @@ using System;
 namespace HonamiAnimationSystem.Editor.BlendTree
 {
     /// <summary>
-    /// Draggable node card for a single blend motion: exposes the clip, blend coordinates, speed
-    /// and mirror fields, and visualizes its live blend weight as a radial arc.
+    /// Draggable node card for a single blend motion: exposes the clip, blend coordinates, speed,
+    /// mirror and (directional only) cycle offset fields, and visualizes its live blend weight as a radial arc.
     /// </summary>
     internal sealed class BlendTreeMotionCard : VisualElement
     {
@@ -230,6 +230,36 @@ namespace HonamiAnimationSystem.Editor.BlendTree
             valuesRow.Add(FieldColumn("Speed", speedField, flexGrow: 1, minWidth: 44));
             valuesRow.Add(FieldColumn("Mirror", mirrorToggle, flexGrow: 0, minWidth: 0, marginRight: 0));
             body.Add(valuesRow);
+
+            if (_state.IsDirectional2D)
+            {
+                var cycleOffsetRow = new VisualElement
+                {
+                    style = { flexDirection = FlexDirection.Row, alignItems = Align.FlexStart, marginTop = 8 }
+                };
+                var cycleOffsetField = new FloatField
+                {
+                    tooltip = "Normalized cycle offset in [0, 1) added to this motion's sample phase, like Unity's Cycle Offset. Weights, period and the shared phase are unchanged."
+                };
+                cycleOffsetField.AddToClassList("honami-bt-node-field");
+                cycleOffsetField.BindProperty(motionProp.FindPropertyRelative("cycleOffset"));
+                cycleOffsetField.RegisterValueChangedCallback(evt =>
+                {
+                    float clamped = ClampCycleOffset(evt.newValue);
+                    if (clamped != evt.newValue) cycleOffsetField.value = clamped;
+                });
+                GuardInput(cycleOffsetField);
+                cycleOffsetRow.Add(FieldColumn("Cycle Offset", cycleOffsetField, flexGrow: 1, minWidth: 44, marginRight: 0));
+                body.Add(cycleOffsetRow);
+            }
+        }
+
+        private const float MaxCycleOffset = 0.9999f;
+
+        private static float ClampCycleOffset(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value)) return 0f;
+            return Mathf.Clamp(value, 0f, MaxCycleOffset);
         }
 
 

@@ -192,7 +192,8 @@ namespace HonamiAnimationSystem.Editor.BlendTree
                     clip = source.clip,
                     position = FindFreeDirectionalPosition(node, false),
                     speed = source.speed,
-                    threshold = source.threshold
+                    threshold = source.threshold,
+                    cycleOffset = source.cycleOffset
                 });
                 EditorUtility.SetDirty(node);
                 return;
