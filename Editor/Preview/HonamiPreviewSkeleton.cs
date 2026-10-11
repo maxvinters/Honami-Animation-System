@@ -297,6 +297,34 @@ namespace HonamiAnimationSystem.Editor.Preview
             PinRoot();
         }
 
+        /// <summary>
+        /// Shows <paramref name="target"/> with the inertial residual added on top. The residual is captured from the
+        /// source pose/velocity and the target pose/velocity at the switch, then decays over <paramref name="duration"/>.
+        /// </summary>
+        public void ApplyInertial(Pose sourceCurrent, Pose sourcePrevious, Pose targetCurrent, Pose targetNext, float deltaSeconds,
+            Pose target, float elapsedSeconds, float duration)
+        {
+            int n = _bones.Length;
+            if (sourceCurrent == null || sourcePrevious == null || targetCurrent == null || targetNext == null || target == null) return;
+            if (sourceCurrent.Count != n || sourcePrevious.Count != n || targetCurrent.Count != n ||
+                targetNext.Count != n || target.Count != n) return;
+
+            for (int i = 0; i < n; i++)
+            {
+                HonamiInertialPoseResidual residual = HonamiInertialPoseMath.CaptureResidual(
+                    ToInertial(sourceCurrent, i), ToInertial(sourcePrevious, i), deltaSeconds,
+                    ToInertial(targetCurrent, i), ToInertial(targetNext, i), deltaSeconds);
+                HonamiInertialPose result = HonamiInertialPoseMath.ApplyResidual(ToInertial(target, i), residual, elapsedSeconds, duration);
+                _bones[i].localPosition = result.Position;
+                _bones[i].localRotation = result.Rotation;
+                _bones[i].localScale = result.Scale;
+            }
+            PinRoot();
+        }
+
+        private static HonamiInertialPose ToInertial(Pose pose, int i)
+            => new HonamiInertialPose(pose.Pos[i], pose.Rot[i], pose.Scale[i]);
+
         private void PinRoot()
         {
             if (_root == null) return;

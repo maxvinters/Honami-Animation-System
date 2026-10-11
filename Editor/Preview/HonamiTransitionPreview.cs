@@ -45,6 +45,11 @@ namespace HonamiAnimationSystem.Editor.Preview
         private Label _hintLabel;
         private HonamiPreviewSkeleton.Pose _poseFrom;
         private HonamiPreviewSkeleton.Pose _poseTo;
+        // Inertial preview: source pose and its predecessor, target pose and its successor at the switch.
+        private HonamiPreviewSkeleton.Pose _poseSrcPrev;
+        private HonamiPreviewSkeleton.Pose _poseTgtStart;
+        private HonamiPreviewSkeleton.Pose _poseTgtNext;
+        private const float InertialStep = 1f / 60f;
         private readonly Dictionary<HonamiState, Vector2> _directionalInputs = new();
         private float[] _directionalWeightBuffer = Array.Empty<float>();
 
@@ -541,6 +546,12 @@ namespace HonamiAnimationSystem.Editor.Preview
             float tgtSeconds = (_transition != null ? _transition.destinationStartTime : 0f) + tgtElapsed;
             float tgtNorm = tgtDur > 0f ? Mathf.Repeat(tgtSeconds / tgtDur, 1f) : 0f;
 
+            if (_transition != null && _transition.type == HonamiTransitionType.Inertial)
+            {
+                SampleInertial(srcDur, tgtDur, leadIn, dur, tau);
+                return;
+            }
+
             float weight;
             if (tau <= leadIn) weight = 0f;
             else if (tau >= leadIn + dur) weight = 1f;
@@ -557,15 +568,56 @@ namespace HonamiAnimationSystem.Editor.Preview
             _skeleton.CaptureInto(_poseTo);
 
             _skeleton.ApplyCrossfade(_poseFrom, _poseTo, weight);
-            if (_weightLabel != null)
+            SetWeightLabel(weight);
+        }
+
+        // Inertial: the target runs from the switch with the source's offset and velocity decaying on top of it.
+        private void SampleInertial(float srcDur, float tgtDur, float leadIn, float dur, float tau)
+        {
+            float srcNorm = srcDur > 0f ? Mathf.Repeat(tau / srcDur, 1f) : 0f;
+            if (tau < leadIn)
             {
-                int pct = Mathf.RoundToInt(weight * 100f);
-                if (pct != _lastDisplayedWeightPct)
-                {
-                    _lastDisplayedWeightPct = pct;
-                    _weightLabel.text = $"{pct}%";
-                }
+                SampleState(EffectiveSource, srcNorm, _sourceBlend);
+                SetWeightLabel(0f);
+                return;
             }
+
+            EnsurePose(ref _poseFrom);
+            EnsurePose(ref _poseTo);
+            EnsurePose(ref _poseSrcPrev);
+            EnsurePose(ref _poseTgtStart);
+            EnsurePose(ref _poseTgtNext);
+
+            float startSeconds = _transition.destinationStartTime;
+            float elapsed = tau - leadIn;
+
+            SampleState(EffectiveSource, srcDur > 0f ? Mathf.Repeat(leadIn / srcDur, 1f) : 0f, _sourceBlend);
+            _skeleton.CaptureInto(_poseFrom);
+            SampleState(EffectiveSource, srcDur > 0f ? Mathf.Repeat((leadIn - InertialStep) / srcDur, 1f) : 0f, _sourceBlend);
+            _skeleton.CaptureInto(_poseSrcPrev);
+            SampleState(_target, tgtDur > 0f ? Mathf.Repeat(startSeconds / tgtDur, 1f) : 0f, _targetBlend);
+            _skeleton.CaptureInto(_poseTgtStart);
+            SampleState(_target, tgtDur > 0f ? Mathf.Repeat((startSeconds + InertialStep) / tgtDur, 1f) : 0f, _targetBlend);
+            _skeleton.CaptureInto(_poseTgtNext);
+            SampleState(_target, tgtDur > 0f ? Mathf.Repeat((startSeconds + elapsed) / tgtDur, 1f) : 0f, _targetBlend);
+            _skeleton.CaptureInto(_poseTo);
+
+            _skeleton.ApplyInertial(_poseFrom, _poseSrcPrev, _poseTgtStart, _poseTgtNext, InertialStep, _poseTo, elapsed, dur);
+            SetWeightLabel(Mathf.Clamp01(elapsed / dur));
+        }
+
+        private void EnsurePose(ref HonamiPreviewSkeleton.Pose pose)
+        {
+            if (pose == null || pose.Count != _skeleton.Bones.Count) pose = _skeleton.CreatePose();
+        }
+
+        private void SetWeightLabel(float weight)
+        {
+            if (_weightLabel == null) return;
+            int pct = Mathf.RoundToInt(weight * 100f);
+            if (pct == _lastDisplayedWeightPct) return;
+            _lastDisplayedWeightPct = pct;
+            _weightLabel.text = $"{pct}%";
         }
 
         private bool SampleState(HonamiState state, float normalizedTime, float blendValue)
