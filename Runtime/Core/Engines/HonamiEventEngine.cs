@@ -104,13 +104,24 @@ namespace HonamiAnimationSystem.Runtime.Core
 
             if (currentLoop != lastLoop)
             {
-                int missed = System.Math.Min(System.Math.Abs(currentLoop - lastLoop), 3);
-                for (int i = 0; i < missed; i++)
+                // Finish the cycle that just ended: only events it has not fired yet (they lay between the
+                // last sample and the cycle end). Re-firing the whole list here doubled every event per loop.
+                var fired = anim._firedEventsPerPort[layer][portIdx];
+                for (int ei = 0; ei < eventCount; ei++)
+                {
+                    var evt = state.events[ei];
+                    if (!fired.Contains(evt)) FireEvent(anim, evt);
+                }
+
+                // Cycles skipped entirely by a large time step fire every event once each; together with the
+                // finished cycle this keeps the previous cap of three cycles' worth of events per frame.
+                int skipped = System.Math.Min(System.Math.Abs(currentLoop - lastLoop) - 1, 2);
+                for (int i = 0; i < skipped; i++)
                 {
                     for (int ei = 0; ei < eventCount; ei++)
                         FireEvent(anim, state.events[ei]);
                 }
-                anim._firedEventsPerPort[layer][portIdx].Clear();
+                fired.Clear();
             }
 
             float loopedTime = (float)(rawTime % unscaledDuration);
