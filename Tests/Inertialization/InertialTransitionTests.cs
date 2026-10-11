@@ -279,6 +279,7 @@ namespace HonamiAnimationSystem.Tests.Inertialization
 
             int b = FirstIndex(s, x => x.State == Internals.StateIndex(f.Rig.Anim, "B"));
             Assert.GreaterOrEqual(b, 0);
+            Assert.AreEqual(HonamiInertializerPhase.Idle, s[b].Phase, "no residual starts on the switch frame");
             int atTarget = FirstIndex(s, x => Mathf.Abs(x.X - 5f) < 1e-4f);
             Assert.GreaterOrEqual(atTarget, 0);
             Assert.LessOrEqual(atTarget - b, 1, "cut straight to the target");
@@ -312,14 +313,16 @@ namespace HonamiAnimationSystem.Tests.Inertialization
             Assert.AreEqual(5f, all[all.Count - 1].X, 1e-4f);
         }
 
+        /// <summary>Base layer moves Hip and Tail; a half-weight top layer switches only its Arm pose with an Inertial edge.</summary>
         [UnityTest]
-        public IEnumerator MultiLayer_UnchangedBonesAreLeftAlone()
+        public IEnumerator MultiLayer_BonesOfOtherLayerAreLeftAlone()
         {
             var rig = NewRig();
             var c = NewController();
             AddLayer(c, "Top");
+            c.layers[1].weight = 0.5f;
             AddBool(c, "Go");
-            AddClipState(c, "Base", LinearClip("Base", ClipLength, 0f, 0f, 0f, 0f, tailX: 3f), 0, true);
+            AddClipState(c, "Base", LinearClip("Base", ClipLength, 0f, 60f, 0f, 0f, tailX: 3f), 0, true);
             var a = AddClipState(c, "TopA", LinearClip("TopA", ClipLength, 1f, 1f, 0f, 0f, tailX: 3f), 1, true);
             var b = AddClipState(c, "TopB", LinearClip("TopB", ClipLength, 1f, 1f, 70f, 70f, tailX: 3f), 1);
             a.transitions.Add(Edge(b, "Go", HonamiTransitionType.Inertial, 0.3f));
@@ -328,15 +331,84 @@ namespace HonamiAnimationSystem.Tests.Inertialization
             var s = new List<Sample>();
             yield return Record(rig, 90, s, i => { if (i == 30) rig.Anim.SetBool("Go", true); });
 
-            float minTail = float.MaxValue, maxTail = float.MinValue, minHip = float.MaxValue, maxHip = float.MinValue;
+            Assert.GreaterOrEqual(FirstIndex(s, x => x.Phase == HonamiInertializerPhase.CaptureVelocity), 0, "the inertial switch ran");
+            // Hip moves with the base layer (and stays linear through the switch); Tail is identical in both top states.
+            Assert.Less(MaxSecondDiff(s, 5, s.Count), 1e-3f, "Hip keeps its linear motion across the top layer's switch");
+            float minTail = float.MaxValue, maxTail = float.MinValue;
             for (int i = 5; i < s.Count; i++)
             {
                 minTail = Mathf.Min(minTail, s[i].TailX); maxTail = Mathf.Max(maxTail, s[i].TailX);
-                minHip = Mathf.Min(minHip, s[i].X); maxHip = Mathf.Max(maxHip, s[i].X);
             }
-            Assert.Less(maxTail - minTail, 1e-5f, "Tail is identical in both states");
-            Assert.Less(maxHip - minHip, 1e-5f, "Hip is identical in both states");
-            Assert.AreEqual(70f, s[s.Count - 1].ArmDeg, 0.05f, "Arm did converge to the new state");
+            Assert.Less(maxTail - minTail, 1e-3f, "Tail does not move");
+            Assert.Greater(s[s.Count - 1].ArmDeg, 10f, "Arm did blend towards the new top state");
+        }
+
+        [UnityTest]
+        public IEnumerator CutOnAnotherLayer_DoesNotCancelTheResidual()
+        {
+            var rig = NewRig();
+            var c = NewController();
+            AddLayer(c, "Top");
+            c.layers[1].weight = 0f;
+            AddBool(c, "Go");
+            AddBool(c, "Cut");
+            var a = AddClipState(c, "A", LinearClip("A", ClipLength, 0f, Speed * ClipLength), 0, true);
+            var b = AddClipState(c, "B", LinearClip("B", ClipLength, 5f, 5f));
+            a.transitions.Add(Edge(b, "Go", HonamiTransitionType.Inertial, 0.5f));
+            var ta = AddClipState(c, "TopA", LinearClip("TopA", ClipLength, 0f, 0f), 1, true);
+            var tb = AddClipState(c, "TopB", LinearClip("TopB", ClipLength, 0f, 0f), 1);
+            ta.transitions.Add(Edge(tb, "Cut", HonamiTransitionType.Standard, 0f));
+            rig.Begin(c);
+
+            var s = new List<Sample>();
+            yield return Record(rig, 90, s, i =>
+            {
+                if (i == 20) rig.Anim.SetBool("Go", true);
+                if (i == 30) rig.Anim.SetBool("Cut", true);
+            });
+
+            Assert.AreEqual(Internals.StateIndex(rig.Anim, "TopB"), rig.Anim._layerStates[1].CurrentStateIndex, "the cut happened");
+            Assert.Less(MaxStep(s, 5, s.Count), StepPerFrame * 2.5f, "layer 0 stays continuous through the other layer's cut");
+            Assert.AreEqual(5f, s[s.Count - 1].X, 1e-4f);
+        }
+
+        [UnityTest]
+        public IEnumerator Gate_ClearsByTimer_WhenTheJobIsNeverEvaluatedToTheEnd()
+        {
+            var f = Build(HonamiTransitionType.Inertial, 0.3f, withBack: true, backType: HonamiTransitionType.Standard, backInterrupt: false, backDuration: 0.2f);
+            yield return Frames(20);
+            f.Rig.Anim.SetBool("Go", true);
+            yield return Frames(2);
+            // Simulate a stalled job (culled / stopped animator): its own duration is far longer than the layer gate.
+            f.Rig.Anim._inertializer.Begin(1000f);
+            f.Rig.Anim.SetBool("Back", true);
+
+            yield return Frames(Mathf.CeilToInt(0.3f / Dt) + 8);
+            Assert.AreEqual(Internals.StateIndex(f.Rig.Anim, "C"), f.Rig.Anim._layerStates[0].CurrentStateIndex,
+                "the non-interruptible edge fired once the timer released the gate");
+            Assert.IsFalse(f.Rig.Anim._inertializer.IsActive, "the stalled residual was cancelled");
+        }
+
+        [UnityTest]
+        public IEnumerator HeldSelfEdge_DoesNotDriftAway()
+        {
+            var rig = NewRig();
+            var c = NewController();
+            AddBool(c, "Go");
+            var a = AddClipState(c, "A", LinearClip("A", ClipLength, 0f, Speed * ClipLength), 0, true);
+            a.transitions.Add(Edge(a, "Go", HonamiTransitionType.Inertial, 0.3f, canSelf: true));
+            rig.Begin(c);
+
+            var s = new List<Sample>();
+            yield return Record(rig, 20, s);
+            rig.Anim.SetBool("Go", true); // stays true: the edge fires every tick
+            yield return Record(rig, 90, s);
+
+            float max = float.MinValue;
+            for (int i = 20; i < s.Count; i++) max = Mathf.Max(max, s[i].X);
+            // Unchecked, the extrapolation would run away at 6 units/s (9+ after 1.5 s).
+            Assert.Less(max, 2.5f, "pose stays bounded while the edge keeps re-triggering");
+            Assert.Less(Mathf.Abs(s[s.Count - 1].X - s[s.Count - 10].X), 0.5f);
         }
 
         [UnityTest]

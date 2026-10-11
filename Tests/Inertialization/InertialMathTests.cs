@@ -10,8 +10,12 @@ namespace HonamiAnimationSystem.Tests.Inertialization
         private static HonamiInertialPose Pose(float3 p, float angleRad, float3 s)
             => new HonamiInertialPose(p, quaternion.AxisAngle(math.up(), angleRad), s);
 
+        // atan2 form: acos loses all precision near identity, so it cannot resolve small angles.
         private static float Angle(quaternion a, quaternion b)
-            => math.degrees(2f * math.acos(math.min(1f, math.abs(math.dot(a.value, b.value)))));
+        {
+            quaternion rel = math.mul(a, math.conjugate(b));
+            return math.degrees(2f * math.atan2(math.length(rel.value.xyz), math.abs(rel.value.w)));
+        }
 
         [Test]
         public void Extrapolate_LinearPositionAndConstantAngularVelocity_IsExact()

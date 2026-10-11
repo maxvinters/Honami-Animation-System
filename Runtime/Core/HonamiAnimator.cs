@@ -123,6 +123,9 @@ namespace HonamiAnimationSystem.Runtime.Core
         internal HonamiAvatarProcessor _avatarProcessor = new();
         // Only created for controllers that contain Inertial transitions.
         internal HonamiInertializationProcessor _inertializer;
+        // Layer whose Inertial transition started the current residual, and a counter that detects nested plays.
+        internal int _inertialOwnerLayer = -1;
+        internal int _playSerial;
 
         internal bool _avatarEnabled;
 
@@ -532,6 +535,7 @@ namespace HonamiAnimationSystem.Runtime.Core
             _layerStates[layer].PreviousStateIndex = -1;
 
             _layerStates[layer].TransientStateIndex = -1;
+            HonamiPlaybackEngine.CancelInertialIfOwner(this, layer);
 
             if (_layerMixer.IsValid() && layer < _layerMixer.GetInputCount())
                 _layerMixer.SetInputWeight(layer, 0f);
@@ -715,7 +719,9 @@ namespace HonamiAnimationSystem.Runtime.Core
                 }
             }
 
-            PlayTransition(t, t.targetStateGuid, t.duration, layer, false, t.destinationStartTime);
+            PlayStateByGuidWithPriority(t.targetStateGuid, t.duration, layer, false, t.ResolveBlendCurve(), t.destinationStartTime, t.priority, t.victimMode, t.sacrificeSpeedMultiplier, t.acceleratedWeightDrop, t.useCustomVictimCurve ? t.victimWeightCurve : null, t.type == HonamiTransitionType.Inertial);
+
+            HonamiPlaybackEngine.ApplyTransitionFreeze(this, layer, t.freezeMode);
             return true;
         }
 
@@ -764,7 +770,9 @@ namespace HonamiAnimationSystem.Runtime.Core
                 }
             }
 
-            PlayTransition(t, t.targetStateGuid, t.duration, layer, false, t.destinationStartTime);
+            PlayStateByGuidWithPriority(t.targetStateGuid, t.duration, layer, false, t.ResolveBlendCurve(), t.destinationStartTime, t.priority, t.victimMode, t.sacrificeSpeedMultiplier, t.acceleratedWeightDrop, t.useCustomVictimCurve ? t.victimWeightCurve : null, t.type == HonamiTransitionType.Inertial);
+
+            HonamiPlaybackEngine.ApplyTransitionFreeze(this, layer, t.freezeMode);
             return true;
         }
 
@@ -814,6 +822,8 @@ namespace HonamiAnimationSystem.Runtime.Core
             }
 
             if (_layerMixers == null) return;
+
+            HonamiPlaybackEngine.CancelInertialAll(this);
 
             for (int layer = 0; layer < _layerMixers.Count; layer++)
             {

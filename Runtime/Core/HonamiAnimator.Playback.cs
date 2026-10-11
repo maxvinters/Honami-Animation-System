@@ -68,9 +68,18 @@ namespace HonamiAnimationSystem.Runtime.Core
         {
             EnsureGraph();
             if (!_stateNameToIndex.TryGetValue(StringToHash(stateName), out int targetIndex)) return;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (duration > 0f && (_inertializer == null || !_inertializer.IsCreated) && !_inertialFallbackWarned)
+            {
+                _inertialFallbackWarned = true;
+                Debug.LogWarning("[Honami] PlayStateInertial needs at least one Inertial transition (duration > 0) in the controller; playing a normal cross-fade instead.", this);
+            }
+#endif
             HonamiPlaybackEngine.PlayStateInternal(this, targetIndex, duration, layer, forceRestart, null, destinationStartTime,
                 inertial: true);
         }
+
+        private bool _inertialFallbackWarned;
 
         /// <summary>True while an inertial residual is still decaying on this layer.</summary>
         public bool IsInertializing(int layer)

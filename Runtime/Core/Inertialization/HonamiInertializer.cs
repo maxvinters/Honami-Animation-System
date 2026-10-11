@@ -32,6 +32,8 @@ namespace HonamiAnimationSystem.Runtime.Core
         public float HistoryDelta;
         public float Elapsed;
         public float Duration;
+        /// <summary>1 when this inertialization re-started while a capture was still pending: hold the visible pose instead of extrapolating again.</summary>
+        public byte HoldInsteadOfExtrapolate;
     }
 
     /// <summary>
@@ -49,6 +51,13 @@ namespace HonamiAnimationSystem.Runtime.Core
         public NativeArray<HonamiInertializerState> state;
 
         public void ProcessRootMotion(AnimationStream stream) { }
+
+        private static bool PoseChanged(HonamiInertialPose a, HonamiInertialPose b)
+        {
+            return math.lengthsq(a.Position - b.Position) > 1e-10f ||
+                   math.lengthsq(a.Scale - b.Scale) > 1e-10f ||
+                   math.abs(math.dot(a.Rotation.value, b.Rotation.value)) < 0.9999999f;
+        }
 
         public void ProcessAnimation(AnimationStream stream)
         {
@@ -81,7 +90,9 @@ namespace HonamiAnimationSystem.Runtime.Core
                         }
                         else
                         {
-                            if (depth >= 2)
+                            if (depth >= 1 && st.HoldInsteadOfExtrapolate != 0)
+                                output = historyCurrent[i];
+                            else if (depth >= 2)
                                 output = HonamiInertialPoseMath.Extrapolate(historyCurrent[i], historyPrevious[i], historyDelta, dt);
                             else if (depth == 1)
                                 output = historyCurrent[i];
@@ -123,8 +134,12 @@ namespace HonamiAnimationSystem.Runtime.Core
                 }
                 else
                 {
+                    // Time did not advance. If the pose is unchanged (paused) the recorded velocity stays valid;
+                    // if it jumped (a cut followed by Tick(0)) the jump must not be read as velocity, so the
+                    // velocity is dropped: the new animation's real velocity is unknown until it advances.
+                    HonamiInertialPose old = historyCurrent[i];
                     historyCurrent[i] = output;
-                    if (depth == 0) historyPrevious[i] = output;
+                    if (depth == 0 || PoseChanged(old, output)) historyPrevious[i] = output;
                 }
             }
 
@@ -256,6 +271,18 @@ namespace HonamiAnimationSystem.Runtime.Core
             if (!IsCreated || !(duration > 0f)) return;
 
             var st = _state[0];
+            // Nothing visible has been recorded yet, so there is no source pose to decay from.
+            if (st.HistoryDepth == 0)
+            {
+                st.Phase = HonamiInertializerPhase.Idle;
+                _state[0] = st;
+                return;
+            }
+
+            // Re-triggered before the previous capture finished (a held condition firing every tick): extrapolating
+            // again each time would slide the pose away linearly, so hold the visible pose instead.
+            st.HoldInsteadOfExtrapolate = (byte)(st.Phase == HonamiInertializerPhase.CaptureOffset ||
+                                                 st.Phase == HonamiInertializerPhase.CaptureVelocity ? 1 : 0);
             st.Phase = HonamiInertializerPhase.CaptureOffset;
             st.Elapsed = 0f;
             st.Duration = duration;

@@ -271,9 +271,20 @@ namespace HonamiAnimationSystem.Runtime.Core
             {
                 if (anim._layerStates[layer].InertialDuration > 0.0)
                 {
-                    // The job decides when the residual ends (it can hold on frames that do not advance).
+                    // The job decides when the residual ends (it can hold on frames that do not advance), but it
+                    // freezes when the graph is not evaluated (culling, stopped animator). The timer is the backstop:
+                    // two frames of slack cover the frame the Begin tick already counted.
                     anim._layerStates[layer].InertialTime += anim._cachedDeltaTime;
-                    IsInertializing(anim, layer);
+                    if (anim._layerStates[layer].InertialTime >= anim._layerStates[layer].InertialDuration + 2.0 * anim._cachedDeltaTime
+                        && anim._cachedDeltaTime > 0.0)
+                    {
+                        HonamiPlaybackEngine.CancelInertialIfOwner(anim, layer);
+                        ClearInertialGate(anim, layer);
+                    }
+                    else
+                    {
+                        IsInertializing(anim, layer);
+                    }
                 }
 
                 if (anim._layerStates[layer].IsLayerPaused || anim._layerStates[layer].TransitionDuration <= 0.0) continue;

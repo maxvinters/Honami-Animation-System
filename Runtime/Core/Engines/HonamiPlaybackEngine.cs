@@ -68,6 +68,10 @@ namespace HonamiAnimationSystem.Runtime.Core
                 return;
             }
 
+            // A nested play (e.g. from a StateExited callback fired during the switch) bumps this serial, and
+            // the inertial bookkeeping of the outer play must then stand down.
+            int playSerial = ++anim._playSerial;
+
             // Inertial reuses the instant (duration 0) switch and lets the inertializer decay the residual.
             // Without a processor (controller has no Inertial transitions) it falls back to a crossfade.
             float inertialDuration = 0f;
@@ -109,7 +113,38 @@ namespace HonamiAnimationSystem.Runtime.Core
                     victimCurve);
             }
 
+            if (anim._playSerial != playSerial) return;
             UpdateInertialState(anim, layer, transitionDuration, inertialDuration, priority);
+        }
+
+        /// <summary>Drops the shared residual when <paramref name="layer"/> owns it, and clears that layer's gate.</summary>
+        internal static void CancelInertialIfOwner(HonamiAnimator anim, int layer)
+        {
+            if (anim._inertializer == null || anim._layerStates == null || layer < 0 || layer >= anim._layerStates.Length) return;
+
+            if (anim._inertialOwnerLayer == layer)
+            {
+                anim._inertializer.Cancel();
+                anim._inertialOwnerLayer = -1;
+            }
+
+            anim._layerStates[layer].InertialDuration = 0.0;
+            anim._layerStates[layer].InertialTime = 0.0;
+        }
+
+        /// <summary>Drops the shared residual and every layer's gate.</summary>
+        internal static void CancelInertialAll(HonamiAnimator anim)
+        {
+            if (anim._inertializer == null) return;
+
+            anim._inertializer.Cancel();
+            anim._inertialOwnerLayer = -1;
+            if (anim._layerStates == null) return;
+            for (int i = 0; i < anim._layerStates.Length; i++)
+            {
+                anim._layerStates[i].InertialDuration = 0.0;
+                anim._layerStates[i].InertialTime = 0.0;
+            }
         }
 
         private static void UpdateInertialState(HonamiAnimator anim, int layer, float transitionDuration, float inertialDuration, int priority)
@@ -119,19 +154,16 @@ namespace HonamiAnimationSystem.Runtime.Core
             if (inertialDuration > 0f)
             {
                 anim._inertializer.Begin(inertialDuration);
+                anim._inertialOwnerLayer = layer;
                 anim._layerStates[layer].InertialDuration = inertialDuration;
                 anim._layerStates[layer].InertialTime = 0.0;
                 anim._layerStates[layer].CurrentTransitionPriority = priority;
             }
             else if (transitionDuration <= 0f)
             {
-                // An authored cut drops the residual for every layer, since it is shared.
-                anim._inertializer.Cancel();
-                for (int i = 0; i < anim._layerStates.Length; i++)
-                {
-                    anim._layerStates[i].InertialDuration = 0.0;
-                    anim._layerStates[i].InertialTime = 0.0;
-                }
+                // The residual is shared, but only a cut on the layer that owns it may drop it: a cut elsewhere
+                // would pop the bones that are still decaying.
+                CancelInertialIfOwner(anim, layer);
             }
             else
             {

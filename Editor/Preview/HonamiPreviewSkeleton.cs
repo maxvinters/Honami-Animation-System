@@ -301,7 +301,7 @@ namespace HonamiAnimationSystem.Editor.Preview
         /// Shows <paramref name="target"/> with the inertial residual added on top. The residual is captured from the
         /// source pose/velocity and the target pose/velocity at the switch, then decays over <paramref name="duration"/>.
         /// </summary>
-        public void ApplyInertial(Pose sourceCurrent, Pose sourcePrevious, Pose targetCurrent, Pose targetNext, float deltaSeconds,
+        public void ApplyInertial(Pose sourceCurrent, Pose sourcePrevious, float sourceDelta, Pose targetCurrent, Pose targetNext, float targetDelta,
             Pose target, float elapsedSeconds, float duration)
         {
             int n = _bones.Length;
@@ -312,8 +312,8 @@ namespace HonamiAnimationSystem.Editor.Preview
             for (int i = 0; i < n; i++)
             {
                 HonamiInertialPoseResidual residual = HonamiInertialPoseMath.CaptureResidual(
-                    ToInertial(sourceCurrent, i), ToInertial(sourcePrevious, i), deltaSeconds,
-                    ToInertial(targetCurrent, i), ToInertial(targetNext, i), deltaSeconds);
+                    ToInertial(sourceCurrent, i), ToInertial(sourcePrevious, i), sourceDelta,
+                    ToInertial(targetCurrent, i), ToInertial(targetNext, i), targetDelta);
                 HonamiInertialPose result = HonamiInertialPoseMath.ApplyResidual(ToInertial(target, i), residual, elapsedSeconds, duration);
                 _bones[i].localPosition = result.Position;
                 _bones[i].localRotation = result.Rotation;
