@@ -53,6 +53,9 @@ namespace HonamiAnimationSystem.Runtime.Core
                 PlayStateInternal(defaultIndex, 0f, defaultLayer, true, null, 0f);
                 _playableGraph.Evaluate(0f);
                 if (_animator != null) _animator.Update(0f);
+
+                // These evaluations are not part of the visible timeline.
+                _inertializer?.InvalidateHistory();
             }
         }
 
@@ -88,6 +91,9 @@ namespace HonamiAnimationSystem.Runtime.Core
 
         protected override bool IsGraphIdle()
         {
+            // A decaying residual still drives the pose, so the initial pose must not replace it.
+            if (_inertializer != null && _inertializer.IsActive) return false;
+
             if (_layerStates == null || _layerStates.Length == 0) return true;
 
             for (int i = 0; i < _layerStates.Length; i++)

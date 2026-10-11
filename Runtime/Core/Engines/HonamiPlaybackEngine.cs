@@ -41,7 +41,8 @@ namespace HonamiAnimationSystem.Runtime.Core
             HonamiVictimMode victimMode = HonamiVictimMode.None,
             float victimSpeedMultiplier = 1f,
             bool acceleratedWeightDrop = false,
-            AnimationCurve victimCurve = null)
+            AnimationCurve victimCurve = null,
+            bool inertial = false)
         {
             int intendedLayer = anim._runtimeStates[targetIndex].layerIndex;
 
@@ -62,13 +63,22 @@ namespace HonamiAnimationSystem.Runtime.Core
 
             int prevIdx = anim._layerStates[layer].CurrentStateIndex;
 
+            if (targetIndex == prevIdx && !forceRestart)
+            {
+                return;
+            }
+
+            // Inertial reuses the instant (duration 0) switch and lets the inertializer decay the residual.
+            // Without a processor (controller has no Inertial transitions) it falls back to a crossfade.
+            float inertialDuration = 0f;
+            if (inertial && transitionDuration > 0f && anim._inertializer != null && anim._inertializer.IsCreated)
+            {
+                inertialDuration = transitionDuration;
+                transitionDuration = 0f;
+            }
+
             if (targetIndex == prevIdx)
             {
-                if (!forceRestart)
-                {
-                    return;
-                }
-
                 HandleSelfTransition(
                     anim,
                     targetIndex,
@@ -97,6 +107,37 @@ namespace HonamiAnimationSystem.Runtime.Core
                     victimSpeedMultiplier,
                     acceleratedWeightDrop,
                     victimCurve);
+            }
+
+            UpdateInertialState(anim, layer, transitionDuration, inertialDuration, priority);
+        }
+
+        private static void UpdateInertialState(HonamiAnimator anim, int layer, float transitionDuration, float inertialDuration, int priority)
+        {
+            if (anim._inertializer == null) return;
+
+            if (inertialDuration > 0f)
+            {
+                anim._inertializer.Begin(inertialDuration);
+                anim._layerStates[layer].InertialDuration = inertialDuration;
+                anim._layerStates[layer].InertialTime = 0.0;
+                anim._layerStates[layer].CurrentTransitionPriority = priority;
+            }
+            else if (transitionDuration <= 0f)
+            {
+                // An authored cut drops the residual for every layer, since it is shared.
+                anim._inertializer.Cancel();
+                for (int i = 0; i < anim._layerStates.Length; i++)
+                {
+                    anim._layerStates[i].InertialDuration = 0.0;
+                    anim._layerStates[i].InertialTime = 0.0;
+                }
+            }
+            else
+            {
+                // A crossfade starts from the pre-residual graph pose and the residual keeps decaying on top of it.
+                anim._layerStates[layer].InertialDuration = 0.0;
+                anim._layerStates[layer].InertialTime = 0.0;
             }
         }
 

@@ -41,6 +41,7 @@ namespace HonamiAnimationSystem.Runtime.Core
             BuildStateMetadata(anim);
             AllocateBlendCaches(anim, layerCount, portCount);
             BuildLayerPlayables(anim, layerCount, portCount);
+            InitializeInertializer(anim);
             anim.InsertRigChain();
             BakePortals(anim);
             BakeAnyStateLookup(anim, layerCount);
@@ -157,6 +158,8 @@ namespace HonamiAnimationSystem.Runtime.Core
 
             anim._avatarProcessor?.Dispose();
             anim._constraints?.Dispose();
+            anim._inertializer?.Dispose();
+            anim._inertializer = null;
         }
 
         private static void CacheRuntimeStates(HonamiAnimator anim)
@@ -362,6 +365,20 @@ namespace HonamiAnimationSystem.Runtime.Core
             {
                 anim._constraints.Initialize(anim._animator, anim._playableGraph, anim._layerMixer, anim.avatar);
             }
+        }
+
+        // Sits after the layer/avatar/mirror/constraint chain and before the rig chain, so it sees the final
+        // blended pose. Controllers without Inertial transitions keep the exact graph they had before.
+        private static void InitializeInertializer(HonamiAnimator anim)
+        {
+            if (!HonamiInertializationProcessor.ControllerUsesInertial(anim.controller, anim._runtimeStates, anim._activeStatesCount))
+            {
+                return;
+            }
+
+            var avatarBones = anim._avatarEnabled && anim._avatarProcessor.HasBones ? anim._avatarProcessor.DrivenTransforms : null;
+            anim._inertializer = new HonamiInertializationProcessor();
+            anim._inertializer.Initialize(anim._animator, anim._playableGraph, avatarBones);
         }
 
         private static void InitializeAvatarProcessor(HonamiAnimator anim)

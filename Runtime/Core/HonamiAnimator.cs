@@ -100,6 +100,7 @@ namespace HonamiAnimationSystem.Runtime.Core
         internal Playable _oldControllerPlayable;
         internal HonamiAvatarProcessor _oldAvatarProcessor;
         internal HonamiConstraintProcessor _oldConstraints;
+        internal HonamiInertializationProcessor _oldInertializer;
         internal NativeArray<float> _oldBlendStateValues;
 
         internal int TransientPortIndex => _activeStatesCount;
@@ -120,6 +121,8 @@ namespace HonamiAnimationSystem.Runtime.Core
         internal readonly HonamiParameterStore _params = new();
         internal HonamiConstraintProcessor _constraints = new();
         internal HonamiAvatarProcessor _avatarProcessor = new();
+        // Only created for controllers that contain Inertial transitions.
+        internal HonamiInertializationProcessor _inertializer;
 
         internal bool _avatarEnabled;
 
@@ -161,6 +164,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                 PlayDefaultStates();
                 if (captureFromDefaultStateEnd) CaptureInitialPoseFromDefaultState();
                 _playableGraph.Evaluate(0f);
+                _inertializer?.InvalidateHistory();
                 RestoreInitialPoseIfIdle();
                 ApplyGlobalWeightBlend();
             }
@@ -181,6 +185,7 @@ namespace HonamiAnimationSystem.Runtime.Core
             PlayDefaultStates();
             if (captureFromDefaultStateEnd) CaptureInitialPoseFromDefaultState();
             _playableGraph.Evaluate(0f);
+            _inertializer?.InvalidateHistory();
             RestoreInitialPoseIfIdle();
             ApplyGlobalWeightBlend();
             _playableGraph.Play();
@@ -215,11 +220,14 @@ namespace HonamiAnimationSystem.Runtime.Core
             {
                 _oldAvatarProcessor?.Dispose();
                 _oldConstraints?.Dispose();
+                _oldInertializer?.Dispose();
+                _oldInertializer = null;
                 if (_oldBlendStateValues.IsCreated) _oldBlendStateValues.Dispose();
             }
             base.OnDestroy();
             _avatarProcessor?.Dispose();
             _constraints?.Dispose();
+            _inertializer?.Dispose();
             _params?.Dispose();
             if (_blendStateValues.IsCreated) _blendStateValues.Dispose();
         }
@@ -260,6 +268,8 @@ namespace HonamiAnimationSystem.Runtime.Core
                     
                     _oldAvatarProcessor?.Dispose();
                     _oldConstraints?.Dispose();
+                    _oldInertializer?.Dispose();
+                    _oldInertializer = null;
                     if (_oldBlendStateValues.IsCreated) _oldBlendStateValues.Dispose();
                 }
             }
@@ -336,6 +346,8 @@ namespace HonamiAnimationSystem.Runtime.Core
                     }
                     _oldAvatarProcessor?.Dispose();
                     _oldConstraints?.Dispose();
+                    _oldInertializer?.Dispose();
+                    _oldInertializer = null;
                     if (_oldBlendStateValues.IsCreated) _oldBlendStateValues.Dispose();
                     _isTransitioningController = false;
                 }
@@ -349,6 +361,8 @@ namespace HonamiAnimationSystem.Runtime.Core
 
                 _oldAvatarProcessor = _avatarProcessor;
                 _oldConstraints = _constraints;
+                _oldInertializer = _inertializer;
+                _inertializer = null;
                 _oldBlendStateValues = _blendStateValues;
 
                 _avatarProcessor = new HonamiAvatarProcessor();
@@ -403,6 +417,8 @@ namespace HonamiAnimationSystem.Runtime.Core
                     _isTransitioningController = false;
                     _oldAvatarProcessor?.Dispose();
                     _oldConstraints?.Dispose();
+                    _oldInertializer?.Dispose();
+                    _oldInertializer = null;
                     if (_oldBlendStateValues.IsCreated) _oldBlendStateValues.Dispose();
                 }
 
@@ -699,9 +715,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                 }
             }
 
-            PlayStateByGuidWithPriority(t.targetStateGuid, t.duration, layer, false, t.ResolveBlendCurve(), t.destinationStartTime, t.priority, t.victimMode, t.sacrificeSpeedMultiplier, t.acceleratedWeightDrop, t.useCustomVictimCurve ? t.victimWeightCurve : null);
-
-            HonamiPlaybackEngine.ApplyTransitionFreeze(this, layer, t.freezeMode);
+            PlayTransition(t, t.targetStateGuid, t.duration, layer, false, t.destinationStartTime);
             return true;
         }
 
@@ -750,9 +764,7 @@ namespace HonamiAnimationSystem.Runtime.Core
                 }
             }
 
-            PlayStateByGuidWithPriority(t.targetStateGuid, t.duration, layer, false, t.ResolveBlendCurve(), t.destinationStartTime, t.priority, t.victimMode, t.sacrificeSpeedMultiplier, t.acceleratedWeightDrop, t.useCustomVictimCurve ? t.victimWeightCurve : null);
-
-            HonamiPlaybackEngine.ApplyTransitionFreeze(this, layer, t.freezeMode);
+            PlayTransition(t, t.targetStateGuid, t.duration, layer, false, t.destinationStartTime);
             return true;
         }
 

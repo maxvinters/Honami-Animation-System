@@ -20,7 +20,7 @@ namespace HonamiAnimationSystem.Runtime.Core
             {
                 if (anim._layerStates[layer].IsLayerPaused) continue;
                 int currentIdx = anim._layerStates[layer].CurrentStateIndex;
-                bool isTransitioning = anim._layerStates[layer].PreviousStateIndex != -1;
+                bool isTransitioning = anim._layerStates[layer].PreviousStateIndex != -1 || IsInertializing(anim, layer);
                 bool hasCurrent = currentIdx != -1;
                 bool isCurrentExit = hasCurrent && anim._runtimeStates[currentIdx].node is { IsExit: true };
 
@@ -44,6 +44,26 @@ namespace HonamiAnimationSystem.Runtime.Core
                 if (!interrupted && hasCurrent && !isCurrentExit)
                     EvaluateCurrentStateTransitions(anim, layer, currentIdx, isTransitioning, isCurrentExit);
             }
+        }
+
+        // The inertial residual counts as a running transition: only edges that may interrupt can fire during it.
+        // The job's own state is the source of truth, so the gate also drops when the residual ends mid-frame.
+        private static bool IsInertializing(HonamiAnimator anim, int layer)
+        {
+            if (anim._layerStates[layer].InertialDuration <= 0.0) return false;
+            if (anim._inertializer != null && anim._inertializer.IsActive) return true;
+
+            ClearInertialGate(anim, layer);
+            return false;
+        }
+
+        private static void ClearInertialGate(HonamiAnimator anim, int layer)
+        {
+            anim._layerStates[layer].InertialDuration = 0.0;
+            anim._layerStates[layer].InertialTime = 0.0;
+            // A crossfade that started on top of the residual owns the priority.
+            if (anim._layerStates[layer].TransitionDuration <= 0.0)
+                anim._layerStates[layer].CurrentTransitionPriority = 0;
         }
 
         private static bool EvaluateAnyStateTransitions(HonamiAnimator anim, int layer, int currentIdx, bool isTransitioning, bool isCurrentExit)
@@ -227,16 +247,7 @@ namespace HonamiAnimationSystem.Runtime.Core
 
                     if (tr.sacrificeExisting) anim.Stop(layer);
 
-                    anim.PlayStateByGuidWithPriority(targetState.guid, finalDuration, layer, true,
-                        tr.ResolveBlendCurve(),
-                        tr.destinationStartTime,
-                        tr.type == HonamiTransitionType.Victim ? tr.priority : 0,
-                        tr.type == HonamiTransitionType.Victim ? tr.victimMode : HonamiVictimMode.None,
-                        tr.type == HonamiTransitionType.Victim ? tr.sacrificeSpeedMultiplier : 1f,
-                        tr.type == HonamiTransitionType.Victim ? tr.acceleratedWeightDrop : false,
-                        (tr.type == HonamiTransitionType.Victim && tr.useCustomVictimCurve) ? tr.victimWeightCurve : null);
-
-                    HonamiPlaybackEngine.ApplyTransitionFreeze(anim, layer, tr.freezeMode);
+                    anim.PlayTransition(tr, targetState.guid, finalDuration, layer, true, tr.destinationStartTime);
                     return true;
                 }
 
@@ -248,16 +259,7 @@ namespace HonamiAnimationSystem.Runtime.Core
 
                 if (tr.sacrificeExisting) anim.Stop(layer);
 
-                anim.PlayStateByGuidWithPriority(targetState.guid, finalDuration, layer, forceRestart,
-                    tr.ResolveBlendCurve(),
-                    tr.destinationStartTime,
-                    tr.type == HonamiTransitionType.Victim ? tr.priority : 0,
-                    tr.type == HonamiTransitionType.Victim ? tr.victimMode : HonamiVictimMode.None,
-                    tr.type == HonamiTransitionType.Victim ? tr.sacrificeSpeedMultiplier : 1f,
-                    tr.type == HonamiTransitionType.Victim ? tr.acceleratedWeightDrop : false,
-                    (tr.type == HonamiTransitionType.Victim && tr.useCustomVictimCurve) ? tr.victimWeightCurve : null);
-
-                HonamiPlaybackEngine.ApplyTransitionFreeze(anim, layer, tr.freezeMode);
+                anim.PlayTransition(tr, targetState.guid, finalDuration, layer, forceRestart, tr.destinationStartTime);
                 return true;
             }
             return false;
@@ -267,6 +269,13 @@ namespace HonamiAnimationSystem.Runtime.Core
         {
             for (int layer = 0; layer < anim._layerMixers.Count; layer++)
             {
+                if (anim._layerStates[layer].InertialDuration > 0.0)
+                {
+                    // The job decides when the residual ends (it can hold on frames that do not advance).
+                    anim._layerStates[layer].InertialTime += anim._cachedDeltaTime;
+                    IsInertializing(anim, layer);
+                }
+
                 if (anim._layerStates[layer].IsLayerPaused || anim._layerStates[layer].TransitionDuration <= 0.0) continue;
 
                 anim._layerStates[layer].TransitionTime += anim._cachedDeltaTime;

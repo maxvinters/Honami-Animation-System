@@ -249,12 +249,10 @@ namespace HonamiAnimationSystem.Runtime.Core
                         ApplyTransitionAssignments(anim, originalTrans);
                         ApplyTransitionAssignments(anim, exitTrans);
 
-                        anim.PlayStateByGuid(nextState.guid, originalTrans.duration, layer,
+                        anim.PlayTransition(originalTrans, nextState.guid, originalTrans.duration, layer,
                             forceRestart,
-                            originalTrans.ResolveBlendCurve(),
-                            exitTrans.destinationStartTime);
-
-                        HonamiPlaybackEngine.ApplyTransitionFreeze(anim, layer, originalTrans.freezeMode);
+                            exitTrans.destinationStartTime,
+                            allowVictim: false);
                         return true;
                     }
                 }
