@@ -299,7 +299,7 @@ Your rig setup, whatever it is, stays as-is. A Humanoid character keeps its Huma
 
 Everything lives under **Window ▸ Honami ▸ Tools**:
 
-**Animator Converter** - right-click any `AnimatorController` and choose *Convert to Honami Controller* (or open the window and pick one). It generates a `HonamiController` with your parameters and their defaults, layers with weights, every state (speed, loop, graph positions preserved), sub-state machines (each gets its own Any State and Exit), and transitions with their conditions, exit times and interruption settings. Two things don't auto-port and the converter says so: **2D blend trees** are flattened into a 1D motion list (re-author them as 1D trees, states or layers), and **`StateMachineBehaviour`s** have no direct equivalent - recreate them as Sub-Nodes, which is usually less code.
+**Animator Converter** - right-click any `AnimatorController` and choose *Convert to Honami Controller* (or open the window and pick one). It generates a `HonamiController` with your parameters and their defaults, layers with weights, every state (speed, loop, graph positions preserved), sub-state machines (each gets its own Any State and Exit), and transitions with their conditions, exit times and interruption settings. Freeform and Simple Directional 2D blend trees convert to Honami 2D trees (positions, speeds and cycle offsets preserved; mirrored motions are dropped). Two things don't auto-port and the converter says so: **Cartesian 2D and Direct blend trees** (and 2D trees with nested trees) are flattened into a 1D motion list (re-author them as 1D trees, states or layers), and **`StateMachineBehaviour`s** have no direct equivalent - recreate them as Sub-Nodes, which is usually less code.
 
 **Script API Converter** - scans a folder for C# scripts that use the Animator API, lists the affected files, and lets you convert the ones you tick. It finds your `Animator` fields and variables and rewrites them in place: type references (`Animator`, `GetComponent<Animator>`, `typeof(Animator)`) become `HonamiAnimator`, and `Play` / `CrossFade` / `CrossFadeInFixedTime` become `PlayState`. Parameter calls like `SetFloat`, `SetBool` and `SetTrigger` are left alone on purpose - `HonamiAnimator` uses the same method names, so they compile as-is. Converted files also get `using HonamiAnimationSystem.Runtime.Core;` inserted automatically. It's a source-code rewrite, so **commit first** and review the diff after.
 
@@ -311,7 +311,7 @@ Everything lives under **Window ▸ Honami ▸ Tools**:
 
 **A Humanoid character coming off Mecanim:**
 
-1. Convert its `AnimatorController` with the Animator Converter; re-author 2D trees and behaviours.
+1. Convert its `AnimatorController` with the Animator Converter; re-author Cartesian/Direct trees and behaviours.
 2. Add `HonamiAnimator` to the prefab, assign the new `HonamiController`, clear the Animator's Controller slot - Avatar stays.
 3. Bake the Humanoid clips with the Humanoid Baker and drop the baked clips into the converted states.
 4. Run the Script API Converter over that character's scripts.

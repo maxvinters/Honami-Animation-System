@@ -15,6 +15,9 @@ namespace HonamiAnimationSystem.Editor
         private bool convertStates = true;
         private bool convertTransitions = true;
 
+        // Messages collected during the last conversion (blend tree fallbacks, dropped features).
+        internal readonly List<string> conversionWarnings = new();
+
         [MenuItem("Window/Honami/Tools/Honami Animator Converter")]
         public static void ShowWindow()
         {
@@ -84,6 +87,24 @@ namespace HonamiAnimationSystem.Editor
                 return;
             }
 
+            RunConversion(source, path);
+
+            string message = "Conversion to Honami Controller complete!\nNote: Some elements (e.g. Cartesian/Direct BlendTrees, Behaviours) may require manual adjustments.";
+            if (conversionWarnings.Count > 0)
+            {
+                message += "\n\n" + conversionWarnings.Count + " blend tree note(s) were written to the Console.";
+            }
+            EditorUtility.DisplayDialog("Success", message, "OK");
+        }
+
+        /// <summary>
+        /// Converts <paramref name="source"/> into a new HonamiController asset at <paramref name="path"/>.
+        /// Blend tree notes are collected in <see cref="conversionWarnings"/> and logged as warnings.
+        /// </summary>
+        internal HonamiController RunConversion(AnimatorController source, string path)
+        {
+            sourceAnimator = source;
+            conversionWarnings.Clear();
 
             HonamiController target = ScriptableObject.CreateInstance<HonamiController>();
             AssetDatabase.CreateAsset(target, path);
@@ -109,8 +130,13 @@ namespace HonamiAnimationSystem.Editor
             EditorUtility.SetDirty(target);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+            return target;
+        }
 
-            EditorUtility.DisplayDialog("Success", "Conversion to Honami Controller complete!\nNote: Some elements (e.g. 2D BlendTrees, Behaviours) may require manual adjustments.", "OK");
+        private void AddWarning(string message)
+        {
+            conversionWarnings.Add(message);
+            Debug.LogWarning("[Honami Converter] " + message);
         }
 
         private void ConvertParameters(AnimatorController source, HonamiController target)
@@ -234,9 +260,7 @@ namespace HonamiAnimationSystem.Editor
                 {
                     HonamiBlendTreeNode btNode = ScriptableObject.CreateInstance<HonamiBlendTreeNode>();
                     btNode.name = aState.name + "_Node";
-                    btNode.blendParameter = blendTree.blendParameter;
-
-                    ExtractBlendTreeMotionsFlat(blendTree, btNode.blendMotions);
+                    ConvertBlendTree(blendTree, aState.name, btNode);
 
                     AssetDatabase.AddObjectToAsset(btNode, target);
                     hState.node = btNode;
@@ -265,6 +289,87 @@ namespace HonamiAnimationSystem.Editor
                     stateMachineDefaultStates[sm] = childDefault;
                 }
             }
+        }
+
+        private void ConvertBlendTree(UBlendTree tree, string stateName, HonamiBlendTreeNode node)
+        {
+            node.blendParameter = tree.blendParameter;
+
+            switch (tree.blendType)
+            {
+                case BlendTreeType.FreeformDirectional2D:
+                case BlendTreeType.SimpleDirectional2D:
+                    if (TryConvertDirectional2D(tree, stateName, node)) return;
+                    break;
+                case BlendTreeType.FreeformCartesian2D:
+                case BlendTreeType.Direct:
+                    AddWarning($"Blend tree '{tree.name}' in state '{stateName}' is {tree.blendType}, which Honami does not support. "
+                        + "It was flattened into a 1D motion list; re-author it as 1D trees, states or layers.");
+                    break;
+            }
+
+            ExtractBlendTreeMotionsFlat(tree, node.blendMotions);
+        }
+
+        // Returns false when the tree cannot be represented as a flat Honami 2D tree (caller falls back to flattening).
+        private bool TryConvertDirectional2D(UBlendTree tree, string stateName, HonamiBlendTreeNode node)
+        {
+            string label = $"Blend tree '{tree.name}' in state '{stateName}'";
+            var children = tree.children;
+            for (int i = 0; i < children.Length; i++)
+            {
+                if (children[i].motion is UBlendTree)
+                {
+                    AddWarning($"{label} is {tree.blendType} with a nested blend tree, which Honami's flat 2D tree cannot hold. "
+                        + "It was flattened into a 1D motion list; re-author it manually.");
+                    return false;
+                }
+            }
+
+            node.blendType = HonamiBlendTreeType.FreeformDirectional2D;
+            node.blendParameterY = tree.blendParameterY;
+
+            bool droppedMirror = false;
+            for (int i = 0; i < children.Length; i++)
+            {
+                var child = children[i];
+                if (!(child.motion is AnimationClip clip))
+                {
+                    AddWarning($"{label} has an empty motion slot at index {i}; it was skipped.");
+                    continue;
+                }
+
+                node.blendMotions.Add(new HonamiBlendTreeMotion
+                {
+                    clip = clip,
+                    position = child.position,
+                    threshold = child.threshold,
+                    speed = child.timeScale,
+                    cycleOffset = HonamiBlendTreeNode.WrapCycleOffset(child.cycleOffset),
+                    // Honami's flat 2D profile rejects mirrored motions, so the flag is not carried over.
+                    mirror = false
+                });
+                droppedMirror |= child.mirror;
+            }
+
+            if (droppedMirror)
+            {
+                AddWarning($"{label} uses mirrored motions, which Honami's 2D tree does not support; mirroring was dropped.");
+            }
+
+            if (tree.blendType == BlendTreeType.SimpleDirectional2D)
+            {
+                AddWarning($"{label} is SimpleDirectional2D; it was converted to FreeformDirectional2D. Honami uses its own directional interpolation, so intermediate blends may differ slightly from Unity.");
+            }
+
+            if (!node.TryGetDirectionalSolver(out _, out string error))
+            {
+                AddWarning($"{label} was converted but will not evaluate until fixed: {error} "
+                    + "(Honami needs one motion at (0,0), distinct positions surrounding the origin, positive speeds and at most "
+                    + HonamiDirectionalBlendSolver.MaximumMotionCount + " motions).");
+            }
+
+            return true;
         }
 
         private void ExtractBlendTreeMotionsFlat(UBlendTree tree, List<HonamiBlendTreeMotion> motions)
