@@ -278,12 +278,12 @@ Only the areas where the two genuinely diverge - where Mecanim already does the 
 | **Many characters** | ❌ No cross-animator coordination. | ✅ Linked Brain broadcast by tag, radius, wave or closest-N. |
 | **Objects that don't need a graph** | ⚠️ A controller asset per NPC and per door, or the deprecated legacy `Animation` component. | ✅ Clip Player: a clip list on the object, played by name, on the same runtime and rig stack as everything else. |
 | **Debugging** | ❌ Basic active-state progress bar. | ✅ Live node highlighting, weights and transition values. |
-| **Blend trees** | ✅ 1D and 2D blend trees. | ⚠️ 1D only (2D on the roadmap). |
+| **Blend trees** | ✅ 1D and 2D blend trees. | ⚠️ 1D and Freeform Directional 2D (no Cartesian or Direct 2D). |
 | **Retargeting** | ✅ Humanoid muscle-space retargeting across skeletons. | ⚠️ No runtime retargeting - binds by transform path. The Humanoid Baker tool retargets Humanoid clips onto your skeleton offline and bakes them to Generic. |
 
 ## Honest scope
 
-Honami drives any Animator-based object, and it shines on fast, code-driven action games and on complex or exotic rigs. It is **not** a drop-in Mecanim replacement for every project, though: there's **no runtime Humanoid retargeting** (marketplace Humanoid clips are supported via the offline Humanoid Baker tool), blend trees are **1D only** (no 2D blend space), and overlays use masked layers (additive / aim-offset is on the roadmap). If your project leans on live cross-skeleton retargeting or 2D blendspace locomotion, Unity's built-in Animator is still the better fit.
+Honami drives any Animator-based object, and it shines on fast, code-driven action games and on complex or exotic rigs. It is **not** a drop-in Mecanim replacement for every project, though: there's **no runtime Humanoid retargeting** (marketplace Humanoid clips are supported via the offline Humanoid Baker tool), 2D blend trees are **Freeform Directional only** (no Cartesian or Direct), and overlays use masked layers (additive / aim-offset is on the roadmap). If your project leans on live cross-skeleton retargeting or Cartesian / Direct blend spaces, Unity's built-in Animator is still the better fit.
 
 ## Migrating from Mecanim
 
@@ -326,7 +326,7 @@ Everything lives under **Window ▸ Honami ▸ Tools**:
 Honami is in active beta. In progress and planned:
 
 - **Cinematic Director** - clip-to-clip blending, camera tracks and full cutscene tooling on top of the current sequencer.
-- **2D blend trees** - a full 2D blend space alongside the current 1D trees.
+- **More 2D blend types** - Freeform Cartesian and Direct trees alongside Freeform Directional.
 - **Additive** - additive layers for recoil, lean and look/aim overlays.
 - **Inertialization** - velocity-preserving transition blending.
 
