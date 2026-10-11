@@ -11,7 +11,7 @@ namespace HonamiAnimationSystem.Tests.Editor.Converter
 {
     public sealed class ConverterBlendTreeTests
     {
-        private const string Folder = "Assets/__HonamiConverterTests";
+        private string Folder;
 
         private AnimatorToHonamiConverterWindow window;
         private AnimationClip[] clips;
@@ -19,8 +19,9 @@ namespace HonamiAnimationSystem.Tests.Editor.Converter
         [SetUp]
         public void SetUp()
         {
-            if (AssetDatabase.IsValidFolder(Folder)) AssetDatabase.DeleteAsset(Folder);
-            AssetDatabase.CreateFolder("Assets", "__HonamiConverterTests");
+            string folderName = "__HonamiConverterTests_" + System.Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName);
+            Folder = "Assets/" + folderName;
 
             window = ScriptableObject.CreateInstance<AnimatorToHonamiConverterWindow>();
             clips = new AnimationClip[9];
@@ -101,11 +102,13 @@ namespace HonamiAnimationSystem.Tests.Editor.Converter
             Assert.AreEqual(0.5f, node.blendMotions[2].speed);
             Assert.AreEqual(0.75f, node.blendMotions[2].cycleOffset, 1e-6f);
             Assert.IsEmpty(window.conversionWarnings);
+            Assert.AreEqual(0f, node.blendParameterDampTime);
+            Assert.AreEqual(0f, node.blendParameterDampTimeY);
             Assert.IsTrue(node.TryGetDirectionalSolver(out _, out string error), error);
         }
 
         [Test]
-        public void SimpleDirectional2D_ConvertsToFreeformWithNote()
+        public void SimpleDirectional2D_ConvertsToFreeformWithInfoNote()
         {
             UBlendTree tree = CreateTree(BlendTreeType.SimpleDirectional2D, out var controller);
             AddCross(tree, clips, center: true);
@@ -115,8 +118,9 @@ namespace HonamiAnimationSystem.Tests.Editor.Converter
             Assert.AreEqual(HonamiBlendTreeType.FreeformDirectional2D, node.blendType);
             Assert.AreEqual("MoveY", node.blendParameterY);
             Assert.AreEqual(5, node.blendMotions.Count);
-            Assert.AreEqual(1, window.conversionWarnings.Count);
-            StringAssert.Contains("SimpleDirectional2D", window.conversionWarnings[0]);
+            Assert.IsEmpty(window.conversionWarnings);
+            Assert.AreEqual(1, window.conversionInfo.Count);
+            StringAssert.Contains("SimpleDirectional2D", window.conversionInfo[0]);
             Assert.IsTrue(node.TryGetDirectionalSolver(out _, out string error), error);
         }
 
@@ -144,6 +148,50 @@ namespace HonamiAnimationSystem.Tests.Editor.Converter
             Assert.IsFalse(node.blendMotions.Any(m => m.mirror));
             Assert.IsTrue(window.conversionWarnings.Any(w => w.Contains("mirror")));
             Assert.IsTrue(node.TryGetDirectionalSolver(out _, out string error), error);
+        }
+
+        [Test]
+        public void Directional2D_ReverseChildWarnsNamingChild()
+        {
+            UBlendTree tree = CreateTree(BlendTreeType.FreeformDirectional2D, out var controller);
+            AddCross(tree, clips, center: true);
+            Tweak(tree, 3, -1f, 0f);
+
+            Convert(controller);
+
+            Assert.IsTrue(window.conversionWarnings.Any(w => w.Contains("child 3") && w.Contains("reverse playback")));
+        }
+
+        [Test]
+        public void Directional2D_NegativeStateSpeedAndStateMirrorWarn()
+        {
+            UBlendTree tree = CreateTree(BlendTreeType.FreeformDirectional2D, out var controller);
+            AddCross(tree, clips, center: true);
+            AnimatorState unityState = controller.layers[0].stateMachine.states.First(s => s.state.name == "Tree").state;
+            unityState.speed = -1f;
+            unityState.mirror = true;
+
+            Convert(controller);
+
+            Assert.IsTrue(window.conversionWarnings.Any(w => w.Contains("state speed")));
+            Assert.IsTrue(window.conversionWarnings.Any(w => w.Contains("mirrored state")));
+            Assert.IsTrue(window.conversionWarnings.Any(w => w.Contains("layer 'Base Layer'")));
+        }
+
+        [Test]
+        public void Simple1D_WithNestedDirectional2DChild_FlattensWithWarning()
+        {
+            UBlendTree tree = CreateTree(BlendTreeType.Simple1D, out var controller);
+            tree.AddChild(clips[0], 0f);
+            UBlendTree nested = tree.CreateBlendTreeChild(0f);
+            nested.blendType = BlendTreeType.FreeformDirectional2D;
+            AddCross(nested, clips, center: true);
+
+            var node = Convert(controller);
+
+            Assert.AreEqual(HonamiBlendTreeType.Standard1D, node.blendType);
+            Assert.AreEqual(6, node.blendMotions.Count);
+            Assert.IsTrue(window.conversionWarnings.Any(w => w.Contains("nested FreeformDirectional2D") && w.Contains("Thresholds")));
         }
 
         [Test]
