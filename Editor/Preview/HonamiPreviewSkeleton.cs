@@ -13,7 +13,7 @@ namespace HonamiAnimationSystem.Editor.Preview
     /// poses onto it without touching the scene or the global AnimationMode. Blend weights reuse the
     /// same solver as the runtime blend tree so the preview matches playback.
     /// </summary>
-    internal sealed class HonamiPreviewSkeleton : IDisposable
+    internal sealed partial class HonamiPreviewSkeleton : IDisposable
     {
         private GameObject _root;
         private Transform[] _bones = Array.Empty<Transform>();
@@ -188,7 +188,7 @@ namespace HonamiAnimationSystem.Editor.Preview
             SampleWeightedMotions(motions, weights, normalizedPhase, 0f, reversed, true);
         }
 
-        private static float DirectionalSamplePhase(float phase, float cycleOffset)
+        internal static float DirectionalSamplePhase(float phase, float cycleOffset)
             => cycleOffset == 0f ? phase : Mathf.Repeat(phase + cycleOffset, 1f);
 
         private void SampleWeightedMotions(IReadOnlyList<HonamiBlendTreeMotion> motions,
@@ -360,6 +360,7 @@ namespace HonamiAnimationSystem.Editor.Preview
 
         public void Dispose()
         {
+            DisposeHumanoid();
             if (_root != null)
             {
                 UnityEngine.Object.DestroyImmediate(_root);
