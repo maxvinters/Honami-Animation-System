@@ -189,6 +189,23 @@ namespace HonamiAnimationSystem.Editor.BlendTree
             return _skeleton.IsBuilt;
         }
 
+        /// <summary>
+        /// The preview skeleton is rebuilt from transform curves, which Humanoid clips do not have (they store
+        /// muscle curves), so say so instead of implying the clips are broken.
+        /// </summary>
+        private static string EmptyPreviewText(HonamiBlendTreeNode node)
+        {
+            if (node?.blendMotions != null)
+            {
+                foreach (var motion in node.blendMotions)
+                {
+                    if (motion?.clip != null && motion.clip.isHumanMotion)
+                        return "Humanoid clips can't be previewed here yet (Generic rigs only).";
+                }
+            }
+            return "No clips with transform curves.";
+        }
+
         private void OnViewportGUI()
         {
             HandleInput();
@@ -199,7 +216,7 @@ namespace HonamiAnimationSystem.Editor.BlendTree
             _emptyHint.style.display = ready ? DisplayStyle.None : DisplayStyle.Flex;
             if (!ready)
             {
-                _emptyHint.text = "No clips with transform curves.";
+                _emptyHint.text = EmptyPreviewText(_state.Node);
                 return;
             }
 
